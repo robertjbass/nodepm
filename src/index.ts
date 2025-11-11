@@ -8,8 +8,23 @@ import { config } from 'dotenv'
 import OpenAI from 'openai'
 import * as fs from 'fs'
 import * as path from 'path'
+import { marked } from 'marked'
+import { markedTerminal } from 'marked-terminal'
+
+// Suppress dotenv output completely
+const originalStdoutWrite = process.stdout.write.bind(process.stdout)
+process.stdout.write = ((chunk: any, encoding?: any, callback?: any) => {
+  const str = chunk.toString()
+  if (str.includes('dotenv') || str.includes('🛠️')) {
+    return true
+  }
+  return originalStdoutWrite(chunk, encoding, callback)
+}) as any
 
 config({ debug: false }) // Load .env file without debug output
+
+// Restore stdout after dotenv loads
+process.stdout.write = originalStdoutWrite
 
 const execAsync = promisify(exec)
 
@@ -185,56 +200,84 @@ class NodeProcessManager {
       await this.refreshProcessList()
     })
 
-    // Kill process
+    // Kill process (only when no modals are open)
     this.screen.key(['enter', 'k'], () => {
-      this.killSelectedProcess()
+      if (this.modalStack.length === 0) {
+        this.killSelectedProcess()
+      }
     })
 
-    // Navigation - handle on screen level for better control
+    // Navigation - handle on screen level for better control (only when no modals are open)
     this.screen.key(['up'], () => {
-      this.table.up(1)
-      this.screen.render()
+      if (this.modalStack.length === 0) {
+        this.table.up(1)
+        this.screen.render()
+      }
     })
 
     this.screen.key(['down'], () => {
-      this.table.down(1)
-      this.screen.render()
+      if (this.modalStack.length === 0) {
+        this.table.down(1)
+        this.screen.render()
+      }
     })
 
     // Vi-style navigation
     this.screen.key(['j'], () => {
-      this.table.down(1)
-      this.screen.render()
+      if (this.modalStack.length === 0) {
+        this.table.down(1)
+        this.screen.render()
+      }
     })
 
     // Sort by CPU
     this.screen.key(['c'], () => {
-      this.toggleSort('cpu')
+      if (this.modalStack.length === 0) {
+        this.toggleSort('cpu')
+      }
     })
 
     // Sort by Memory
     this.screen.key(['m'], () => {
-      this.toggleSort('memory')
+      if (this.modalStack.length === 0) {
+        this.toggleSort('memory')
+      }
     })
 
     // AI Explain process
     this.screen.key(['?'], () => {
-      this.explainSelectedProcess()
+      if (this.modalStack.length === 0) {
+        this.explainSelectedProcess()
+      }
     })
 
     // AI Ask custom question
     this.screen.key(['/'], () => {
-      this.askCustomQuestion()
+      if (this.modalStack.length === 0) {
+        this.askCustomQuestion()
+      }
     })
 
     // Help modal
     this.screen.key(['h'], () => {
-      this.showHelpModal()
+      if (this.modalStack.length === 0) {
+        this.showHelpModal()
+      }
     })
 
-    // Mouse support for selection
+    // Mouse support for selection (only when no modals are open)
     this.table.on('select', () => {
-      this.screen.render()
+      if (this.modalStack.length === 0) {
+        this.screen.render()
+      }
+    })
+
+    // Disable table mouse interaction when modals are open
+    this.table.on('click', () => {
+      if (this.modalStack.length > 0) {
+        // Prevent interaction when modals are open
+        return false
+      }
     })
   }
 
@@ -353,14 +396,61 @@ class NodeProcessManager {
     this.helpBar.hide()
     this.statusBar.hide()
 
+    // Create transparent overlay to block all interactions
+    const overlay = blessed.box({
+      parent: this.screen,
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      style: {
+        bg: 'black',
+        transparent: true,
+      },
+      clickable: true,
+      mouse: true,
+    })
+
     // Read README.md content
     let readmeContent = ''
     try {
-      const readmePath = path.join(__dirname, '..', 'README.md')
-      readmeContent = fs.readFileSync(readmePath, 'utf-8')
+      // Simple approach: always look in current working directory first
+      // This works for both tsx and compiled versions
+      let readmePath = path.join(process.cwd(), 'README.md')
+
+      // If not found, try relative to the script location
+      if (!fs.existsSync(readmePath) && typeof __dirname !== 'undefined') {
+        readmePath = path.join(__dirname, '..', 'README.md')
+        if (!fs.existsSync(readmePath)) {
+          readmePath = path.join(__dirname, '..', '..', 'README.md')
+        }
+      }
+
+      if (!fs.existsSync(readmePath)) {
+        throw new Error('README.md not found at: ' + readmePath)
+      }
+
+      const markdownContent = fs.readFileSync(readmePath, 'utf-8')
+
+      // Configure marked to use terminal renderer
+      marked.use(
+        markedTerminal({
+          width: 100,
+        }) as any
+      )
+
+      // Convert markdown to terminal-formatted text
+      readmeContent = marked.parse(markdownContent) as string
+
+      // If content is empty or just whitespace, throw error
+      if (!readmeContent || readmeContent.trim().length === 0) {
+        throw new Error('Markdown rendering produced empty content')
+      }
     } catch (error) {
-      readmeContent =
-        'README.md not found.\n\nUse the arrow keys to navigate the process list.\nPress Enter to kill a selected process.\nPress ? to explain a process with AI.\nPress / to ask AI a custom question.\nPress r to refresh the list.\nPress c to sort by CPU.\nPress m to sort by Memory.\nPress q to quit.'
+      // Show the actual error for debugging
+      const errorMsg =
+        error instanceof Error ? error.message : 'Unknown error'
+      readmeContent = `Error loading README: ${errorMsg}\n\nFallback Help:\n\nUse the arrow keys to navigate the process list.\nPress Enter to kill a selected process.\nPress ? to explain a process with AI.\nPress / to ask AI a custom question.\nPress h to open this help.\nPress r to refresh the list.\nPress c to sort by CPU.\nPress m to sort by Memory.\nPress q to quit.`
     }
 
     const helpBox = blessed.box({
@@ -405,6 +495,7 @@ class NodeProcessManager {
       this.screen.unkey('enter', closeHandler)
       this.screen.unkey('space', closeHandler)
       helpBox.destroy()
+      overlay.destroy()
       this.helpBar.show()
       this.statusBar.show()
       this.screen.render()
@@ -587,6 +678,21 @@ Please provide a helpful, concise answer based on the process list above. If ide
       this.helpBar.hide()
       this.statusBar.hide()
 
+      // Create transparent overlay to block all interactions
+      const overlay = blessed.box({
+        parent: this.screen,
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        style: {
+          bg: 'black',
+          transparent: true,
+        },
+        clickable: true,
+        mouse: true,
+      })
+
       const answerBox = blessed.box({
         parent: this.screen,
         top: 'center',
@@ -626,6 +732,7 @@ Please provide a helpful, concise answer based on the process list above. If ide
         this.screen.unkey('enter', closeHandler)
         this.screen.unkey('space', closeHandler)
         answerBox.destroy()
+        overlay.destroy()
         this.helpBar.show()
         this.statusBar.show()
         this.screen.render()
@@ -681,6 +788,21 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
       this.helpBar.hide()
       this.statusBar.hide()
 
+      // Create transparent overlay to block all interactions
+      const overlay = blessed.box({
+        parent: this.screen,
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        style: {
+          bg: 'black',
+          transparent: true,
+        },
+        clickable: true,
+        mouse: true,
+      })
+
       const explainBox = blessed.box({
         parent: this.screen,
         top: 'center',
@@ -722,6 +844,7 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
         this.screen.unkey('enter', closeHandler)
         this.screen.unkey('space', closeHandler)
         explainBox.destroy()
+        overlay.destroy()
         this.helpBar.show()
         this.statusBar.show()
         this.screen.render()
