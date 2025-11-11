@@ -14,8 +14,8 @@
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "test-publish": "npm pack --dry-run",

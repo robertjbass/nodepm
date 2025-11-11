@@ -428,8 +428,7 @@ export class NodeProcessManager {
         throw new Error('Markdown rendering produced empty content')
       }
     } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : 'Unknown error'
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
       readmeContent = `Error loading README: ${errorMsg}\n\nFallback Help:\n\nUse the arrow keys to navigate the process list.\nPress Enter to kill a selected process.\nPress ? to explain a process with AI.\nPress / to ask AI a custom question.\nPress h to open this help.\nPress r to refresh the list.\nPress c to sort by CPU.\nPress m to sort by Memory.\nPress q to quit.`
     }
 
@@ -913,31 +912,57 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
     this.refreshProcessList()
   }
 
-  private fuzzyMatch(text: string, query: string): boolean {
-    if (!query) return true
-
-    const lowerText = text.toLowerCase()
-    const lowerQuery = query.toLowerCase()
-
-    let queryIndex = 0
-    for (let i = 0; i < lowerText.length && queryIndex < lowerQuery.length; i++) {
-      if (lowerText[i] === lowerQuery[queryIndex]) {
-        queryIndex++
-      }
-    }
-
-    return queryIndex === lowerQuery.length
-  }
-
   private filterProcesses(processes: ProcessInfo[]): ProcessInfo[] {
     if (!this.filterQuery) return processes
 
+    const lowerQuery = this.filterQuery.toLowerCase()
+
     return processes.filter((p) => {
-      const searchText = `${p.pid} ${p.name} ${p.cmd}`.toLowerCase()
-      return (
-        this.fuzzyMatch(searchText, this.filterQuery) ||
-        searchText.includes(this.filterQuery.toLowerCase())
-      )
+      const pidStr = p.pid.toString()
+      const lowerName = p.name.toLowerCase()
+      const lowerCmd = p.cmd.toLowerCase()
+
+      // Exact substring match (highest priority)
+      if (
+        pidStr.includes(this.filterQuery) ||
+        lowerName.includes(lowerQuery) ||
+        lowerCmd.includes(lowerQuery)
+      ) {
+        return true
+      }
+
+      // Word boundary match (e.g., "node" matches "node-server")
+      const nameWords = lowerName.split(/[\s\-_.]/)
+      const cmdWords = lowerCmd.split(/[\s\-_./]/)
+
+      for (const word of [...nameWords, ...cmdWords]) {
+        if (word.startsWith(lowerQuery)) {
+          return true
+        }
+      }
+
+      // Tight fuzzy match - only if characters are reasonably close together
+      const maxGap = 3 // Maximum characters between matches
+      const searchText = `${pidStr} ${lowerName} ${lowerCmd}`
+
+      let queryIndex = 0
+      let lastMatchIndex = -1
+
+      for (
+        let i = 0;
+        i < searchText.length && queryIndex < lowerQuery.length;
+        i++
+      ) {
+        if (searchText[i] === lowerQuery[queryIndex]) {
+          if (lastMatchIndex !== -1 && i - lastMatchIndex > maxGap) {
+            return false
+          }
+          lastMatchIndex = i
+          queryIndex++
+        }
+      }
+
+      return queryIndex === lowerQuery.length
     })
   }
 
@@ -1073,9 +1098,10 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
       }
 
       const processTypeLabel = this.showAllProcesses ? '' : 'Node '
-      const processCountDisplay = this.filterMode && this.filterQuery
-        ? `{bold}{cyan-fg}${displayedProcessCount}{/cyan-fg}{/bold}`
-        : `{bold}{cyan-fg}${totalProcessCount}{/cyan-fg}{/bold}`
+      const processCountDisplay =
+        this.filterMode && this.filterQuery
+          ? `{bold}{cyan-fg}${displayedProcessCount}{/cyan-fg}{/bold}`
+          : `{bold}{cyan-fg}${totalProcessCount}{/cyan-fg}{/bold}`
       const statusMessage = `{green-fg}✓{/green-fg} Found ${processCountDisplay} ${processTypeLabel}processes | Total Memory: {bold}{yellow-fg}${this.formatBytes(totalMemory)}{/yellow-fg}{/bold}${sortIndicator}${filterIndicator} | Last update: {gray-fg}${new Date().toLocaleTimeString()}{/gray-fg}`
 
       this.statusBar.setContent(statusMessage)

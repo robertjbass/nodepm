@@ -75,10 +75,12 @@ nodepm --help
 ## Keyboard Shortcuts
 
 ### Navigation
+
 - **↑/↓** or **j/k** - Navigate up/down through processes
 - **Mouse Click** - Select a process
 
 ### Actions
+
 - **Enter** or **k** - Kill selected process (with confirmation)
 - **r** - Refresh process list
 - **f** - Enter filter mode (fuzzy search)
@@ -86,18 +88,24 @@ nodepm --help
 - **m** - Sort by Memory usage (toggle ascending/descending)
 
 ### Filter Mode
+
 - **f** - Enter filter mode
-- **Type** - Filter processes by PID, name, or command (supports fuzzy matching)
+- **Type** - Filter processes by PID, name, or command
 - **Backspace** - Delete last character from filter
 - **ESC** - Exit filter mode and show all processes again
 
-Filter mode allows you to quickly narrow down the process list by typing. It supports both exact matching and fuzzy matching (e.g., typing "tsx" will match "tsx", "tsserver", etc.).
+Filter mode uses smart matching with three levels:
+1. **Exact substring** - "node" matches "node", "nodejs", "node-server"
+2. **Word boundaries** - "tsx" matches "tsx", "tsx-server" (starts with query)
+3. **Tight fuzzy** - Characters must be within 3 positions of each other
 
 ### AI Features
+
 - **?** - Explain selected process with AI
 - **/** - Ask AI a custom question about your processes
 
 ### Other
+
 - **h** - Show this help menu
 - **q** or **Esc** - Quit (Ctrl+C/Ctrl+D also work)
 
@@ -106,20 +114,26 @@ Filter mode allows you to quickly narrow down the process list by typing. It sup
 Node Process Manager includes optional AI-powered features using OpenAI:
 
 ### Process Explanations
+
 Press **?** on any process to get an AI explanation of what it does and whether it's normal.
 
 ### Custom Questions
+
 Press **/** to ask AI questions like:
+
 - "Which process is using the most memory?"
 - "I've been using Vitest, which processes are related?"
 - "Are any of these processes unusual?"
 
 ### API Key Setup
+
 On first use of AI features, you'll be prompted to enter your OpenAI API key. The key is saved in your user config directory:
+
 - **Linux/Mac**: `~/.config/nodepm/config.json`
 - **Windows**: `%APPDATA%\nodepm\config.json`
 
 You can also set the `OPENAI_API_KEY` environment variable, which takes priority over the config file:
+
 ```bash
 export OPENAI_API_KEY=your_key_here
 ```
