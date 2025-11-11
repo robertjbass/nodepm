@@ -4,7 +4,7 @@
  * This file centralizes all keyboard shortcuts and their mappings.
  * Modifiers:
  * - C- : Ctrl key (works on all platforms)
- * - M- : Meta/Alt key (Cmd on Mac, Alt on Windows/Linux)
+ * - M- : Meta/Alt key (Alt/Option on all platforms including Mac)
  */
 
 export type KeyBinding = {
@@ -17,7 +17,6 @@ export type KeyBinding = {
 }
 
 export const KEY_BINDINGS: Record<string, KeyBinding> = {
-  // Exit/Quit
   EXIT_CTRL_D: {
     keys: ['C-d'],
     action: 'exit',
@@ -38,40 +37,44 @@ export const KEY_BINDINGS: Record<string, KeyBinding> = {
     requiresNoModal: true,
   },
 
-  // Clipboard
   COPY_TO_CLIPBOARD: {
-    keys: ['M-c', 'C-S-c'],
+    keys: ['C-c', 'M-c', 'C-S-c'],
     action: 'copy',
-    label: 'Cmd+C/Ctrl+Shift+C',
+    label: 'Ctrl+C (Mac) / Ctrl+Shift+C (Win/Linux)',
     description: 'Copy selected process info to clipboard',
     requiresNoModal: true,
   },
 
-  // Refresh
   REFRESH: {
     keys: ['C-r', 'M-r'],
     action: 'refresh',
-    label: 'Cmd+R/Ctrl+R',
+    label: 'Alt+R/Ctrl+R',
     description: 'Refresh the process list',
     requiresNoModal: true,
     requiresNoFilter: true,
   },
 
-  // Filter
   FILTER: {
     keys: ['C-f', 'M-f'],
     action: 'filter',
-    label: 'Cmd+F/Ctrl+F',
+    label: 'Alt+F/Ctrl+F',
     description: 'Enter filter mode (fuzzy search)',
     requiresNoModal: true,
     requiresNoFilter: true,
   },
 
-  // Kill process
-  KILL_ENTER: {
+  PROCESS_MENU: {
     keys: ['enter'],
-    action: 'kill',
+    action: 'menu',
     label: 'Enter',
+    description: 'Show process menu with actions',
+    requiresNoModal: true,
+  },
+
+  KILL_X: {
+    keys: ['x'],
+    action: 'kill',
+    label: 'x',
     description: 'Kill selected process (with confirmation)',
     requiresNoModal: true,
   },
@@ -83,7 +86,6 @@ export const KEY_BINDINGS: Record<string, KeyBinding> = {
     requiresNoModal: true,
   },
 
-  // Navigation
   NAV_UP: {
     keys: ['up'],
     action: 'navigate_up',
@@ -106,7 +108,6 @@ export const KEY_BINDINGS: Record<string, KeyBinding> = {
     requiresNoModal: true,
   },
 
-  // Sorting
   SORT_CYCLE: {
     keys: ['s'],
     action: 'sort_cycle',
@@ -130,7 +131,6 @@ export const KEY_BINDINGS: Record<string, KeyBinding> = {
     requiresNoModal: true,
   },
 
-  // AI Features
   AI_EXPLAIN: {
     keys: ['?'],
     action: 'ai_explain',
@@ -146,7 +146,6 @@ export const KEY_BINDINGS: Record<string, KeyBinding> = {
     requiresNoModal: true,
   },
 
-  // Help
   HELP: {
     keys: ['h'],
     action: 'help',
@@ -208,12 +207,12 @@ export function getBindingsByAction(action: string): KeyBinding[] {
 export function generateHelpBarText(): string {
   const shortcuts = [
     { label: '↑↓', description: 'Nav' },
-    { label: 'Enter', description: 'Kill' },
-    { label: 'Cmd+C', description: 'Copy' },
+    { label: 'Enter', description: 'Menu' },
+    { label: 'x', description: 'Kill' },
+    { label: 'Ctrl+C', description: 'Copy' },
     { label: '?', description: 'Explain' },
     { label: '/', description: 'Ask' },
-    { label: 'Cmd+F', description: 'Filter' },
-    { label: 'Cmd+R', description: 'Refresh' },
+    { label: 'Ctrl+F', description: 'Filter' },
     { label: 's', description: 'Sort' },
     { label: 'q', description: 'Quit' },
   ]

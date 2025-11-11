@@ -9,9 +9,9 @@ A beautiful terminal UI for managing and monitoring Node.js processes. Find and 
 
 - **Interactive Process List** - View all running Node.js processes with CPU, memory, and command details
 - **Smart Filtering** - Automatically detects and displays only Node processes (or use `--all` to show all processes)
-- **Fuzzy Search** - Press Cmd+F/Ctrl+F to filter processes in real-time with fuzzy matching
+- **Fuzzy Search** - Press Ctrl+F to filter processes in real-time with fuzzy matching
 - **Sortable Columns** - Sort by CPU usage, memory consumption, or process name with 's' key (arrows shown in column headers)
-- **Clipboard Support** - Copy process information to clipboard with Cmd+C (Mac) / Ctrl+Shift+C (Windows/Linux)
+- **Clipboard Support** - Copy process information to clipboard with Ctrl+C (Mac) / Ctrl+Shift+C (Windows/Linux)
 - **Process Management** - Kill processes with confirmation prompts
 - **AI Integration** - Get explanations and insights about processes using OpenAI
 - **Beautiful Terminal UI** - Clean, colorful interface with keyboard and mouse support
@@ -88,7 +88,7 @@ pnpm check-keys
 ### Key Modifier Legend
 
 - **C-** : Ctrl key (works on all platforms)
-- **M-** : Meta/Cmd key on Mac, Alt key on Windows/Linux
+- **M-** : Meta/Alt key (Alt/Option on all platforms including Mac)
 - **[no modal]** : Only works when no modal window is open
 - **[not filtering]** : Only works when not in filter mode
 
@@ -103,8 +103,8 @@ pnpm check-keys
 | `q`, `Esc` | quit | Quit the application | [no modal] |
 
 **Platform Notes:**
-- **macOS**: Use `Ctrl+D` or `q` to exit. `Ctrl+C` is reserved for copying (along with `Cmd+C`).
-- **Windows/Linux**: Use `Ctrl+C`, `Ctrl+D`, or `q` to exit. Standard terminal `Ctrl+C` behavior is preserved.
+- **macOS**: Use `Ctrl+D` or `q` to exit. On Mac, `Ctrl+C` is used for clipboard copy instead of exit.
+- **Windows/Linux**: Use `Ctrl+C`, `Ctrl+D`, or `q` to exit. `Ctrl+Shift+C` is used for clipboard copy.
 
 #### Navigation
 
@@ -120,15 +120,26 @@ You can also click with your mouse to select a process.
 
 | Key(s) | Action | Description | Constraints |
 |--------|--------|-------------|-------------|
-| `Enter`, `k` | kill | Kill selected process (with confirmation) | [no modal] |
-| `Cmd+C`, `Ctrl+Shift+C` | copy | Copy process info to clipboard (PID, Name, Command) | [no modal] |
+| `Enter` | menu | Show process menu with actions (AI Description, Kill, Copy, Cancel) | [no modal] |
+| `x`, `k` | kill | Kill selected process directly (with confirmation) | [no modal] |
+| `Ctrl+C` (Mac) / `Ctrl+Shift+C` (Win/Linux) | copy | Copy process info to clipboard (PID, Name, Command) | [no modal] |
+
+##### Process Menu
+
+When you press `Enter` on a selected process, a menu appears with the following options:
+- **AI Description** - Get an AI-powered explanation of what the process does
+- **Kill Process** - Kill the selected process (with confirmation)
+- **Copy Process Info** - Copy process details to clipboard
+- **Cancel** - Close the menu
+
+Navigate the menu with arrow keys or mouse, press Enter to select, or Esc/Q to cancel.
 
 #### Refresh & Filter
 
 | Key(s) | Action | Description | Constraints |
 |--------|--------|-------------|-------------|
-| `Cmd+R`, `Ctrl+R` | refresh | Refresh the process list | [no modal, not filtering] |
-| `Cmd+F`, `Ctrl+F` | filter | Enter filter mode (fuzzy search) | [no modal, not filtering] |
+| `Ctrl+R` (all platforms) | refresh | Refresh the process list | [no modal, not filtering] |
+| `Ctrl+F` (all platforms) | filter | Enter filter mode (fuzzy search) | [no modal, not filtering] |
 
 ##### Filter Mode Details
 
@@ -181,7 +192,7 @@ The current sort mode is displayed in two places:
 
 ### Clipboard Format
 
-When you copy a process to the clipboard using `Cmd+C` (Mac) or `Ctrl+Shift+C` (Windows/Linux), the text is formatted as:
+When you copy a process to the clipboard using `Ctrl+C` (Mac) or `Ctrl+Shift+C` (Windows/Linux), the text is formatted as:
 
 ```
 PID: <process_id> | Name: <process_name> | Command: <command>
@@ -207,22 +218,25 @@ To modify key bindings:
 ### Platform Differences
 
 #### macOS
-- Use `Cmd+R` for refresh
-- Use `Cmd+F` for filter
-- Meta key (`M-`) maps to Command key
-
-#### Windows/Linux
+- Use `Ctrl+C` for copy (not Cmd+C)
 - Use `Ctrl+R` for refresh
 - Use `Ctrl+F` for filter
-- Meta key (`M-`) maps to Alt key
+- Use `Ctrl+D` or `q` to exit (Ctrl+C is used for copy, not exit)
 
-The blessed library automatically handles these platform differences using the key binding definitions:
-- `C-r` = Ctrl+R on all platforms
-- `M-r` = Cmd+R on Mac, Alt+R on Windows/Linux
+#### Windows/Linux
+- Use `Ctrl+Shift+C` for copy
+- Use `Ctrl+R` for refresh
+- Use `Ctrl+F` for filter
+- Use `Ctrl+C`, `Ctrl+D`, or `q` to exit
+
+**Important Note for Mac Users:**
+Terminal applications cannot capture Cmd (⌘) key combinations - these are handled by the terminal emulator itself. On macOS, we use `Ctrl+C` for copying instead of exiting, which is why you need to use `Ctrl+D` or `q` to exit the app.
+
+The key bindings are designed to work consistently across all platforms using Ctrl keys, which are universally available.
 
 ### Notes
 
-- Multiple keys can map to the same action (e.g., `Enter` and `k` both kill processes)
+- Multiple keys can map to the same action (e.g., `x` and `k` both kill processes directly)
 - Some keys have contextual behavior (only work when no modal is open, etc.)
 - The `k` key is used for **kill**, not for vim-style "up" navigation
 - Filter mode intercepts most keypresses for typing the filter query
@@ -275,8 +289,9 @@ export OPENAI_API_KEY=your_key_here
 - The process marked as **(This Process)** is the Node Process Manager itself
 - CPU percentages can exceed 100% on multi-core systems (represents total across all cores)
 - Use the **s** key to cycle through sort modes, or **c**/**m** for quick CPU/Memory sorting
-- Press **Cmd+R** (Mac) or **Ctrl+R** (Windows/Linux) to refresh process information
-- Use **Cmd+F** (Mac) or **Ctrl+F** (Windows/Linux) for quick filtering
+- Press **Ctrl+R** (all platforms) to refresh process information
+- Use **Ctrl+F** (all platforms) for quick filtering
+- Press **Enter** on a process to open the action menu, or **x**/**k** to kill directly
 
 ## License
 

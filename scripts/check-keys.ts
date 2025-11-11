@@ -12,7 +12,6 @@ console.log('║           nodepm - Keyboard Bindings Configuration           �
 console.log('╚══════════════════════════════════════════════════════════════╝')
 console.log('')
 
-// Group bindings by action type
 const byAction = new Map<string, Array<{ name: string; binding: any }>>()
 
 Object.entries(KEY_BINDINGS).forEach(([name, binding]) => {
@@ -22,7 +21,6 @@ Object.entries(KEY_BINDINGS).forEach(([name, binding]) => {
   byAction.get(binding.action)!.push({ name, binding })
 })
 
-// Print grouped bindings
 console.log('📋 Key Bindings by Action:\n')
 
 const actionOrder = [
@@ -61,7 +59,6 @@ actionOrder.forEach((action) => {
   })
 })
 
-// Check for conflicts
 console.log('\n\n🔍 Conflict Check:\n')
 const conflicts = checkForConflicts()
 
@@ -79,7 +76,6 @@ if (conflicts.length > 0) {
   console.log('✅ No key conflicts detected!')
 }
 
-// Summary
 console.log('\n\n📊 Summary:\n')
 console.log(`  Total key bindings: ${Object.keys(KEY_BINDINGS).length}`)
 console.log(`  Unique keys used: ${getAllKeys().length}`)

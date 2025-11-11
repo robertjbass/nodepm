@@ -27,7 +27,7 @@ export class NodeProcessManager {
   private table: blessed.Widgets.ListTableElement
   private statusBar: blessed.Widgets.BoxElement
   private helpBar: blessed.Widgets.BoxElement
-  private toastBar: blessed.Widgets.BoxElement
+  private toastBar: blessed.Widgets.BoxElement | null = null
   private processes: ProcessInfo[] = []
   private displayedProcesses: ProcessInfo[] = []
   private refreshInterval: NodeJS.Timeout | null = null
@@ -52,6 +52,7 @@ export class NodeProcessManager {
     this.originalConsoleError = console.error
     this.originalConsoleLog = console.log
 
+    // Suppress blessed/xterm terminal escape sequence warnings that pollute output
     console.error = (...args: any[]) => {
       const message = args.join(' ')
       if (
@@ -86,26 +87,11 @@ export class NodeProcessManager {
       warnings: false,
     })
 
-    // Toast notification bar at the top
-    this.toastBar = blessed.box({
+    this.table = blessed.listtable({
       top: 0,
       left: 0,
       width: '100%',
-      height: 1,
-      content: this.showAllProcesses ? 'All Processes' : 'Node Processes',
-      style: {
-        fg: 'white',
-        bg: 'black',
-        bold: true,
-      },
-      tags: true,
-    })
-
-    this.table = blessed.listtable({
-      top: 1, // Start below toast bar
-      left: 0,
-      width: '100%',
-      height: '100%-4', // Adjust for toast bar
+      height: '100%-3',
       border: {
         type: 'line',
       },
@@ -128,7 +114,7 @@ export class NodeProcessManager {
         },
       },
       align: 'left',
-      keys: false, // We'll handle keys manually
+      keys: false,
       vi: false,
       mouse: true,
       tags: true,
@@ -155,7 +141,7 @@ export class NodeProcessManager {
       width: '100%',
       height: 2,
       content:
-        ' {bold}↑↓{/bold}:Nav {bold}Enter{/bold}:Kill {bold}Cmd+C{/bold}:Copy {bold}?{/bold}:Explain {bold}/{/bold}:Ask {bold}Cmd+F{/bold}:Filter {bold}Cmd+R{/bold}:Refresh {bold}s{/bold}:Sort {bold}q{/bold}:Quit',
+        ' {bold}↑↓{/bold}:Nav {bold}Enter{/bold}:Menu {bold}x{/bold}:Kill {bold}Ctrl+C{/bold}:Copy {bold}?{/bold}:Explain {bold}/{/bold}:Ask {bold}Ctrl+F{/bold}:Filter {bold}s{/bold}:Sort {bold}q{/bold}:Quit',
       style: {
         fg: 'black',
         bg: 'cyan',
@@ -165,7 +151,6 @@ export class NodeProcessManager {
       clickable: true,
     })
 
-    this.screen.append(this.toastBar)
     this.screen.append(this.table)
     this.screen.append(this.statusBar)
     this.screen.append(this.helpBar)
@@ -182,14 +167,13 @@ export class NodeProcessManager {
   private setupKeyBindings() {
     const isMac = process.platform === 'darwin'
 
-    // Exit: Ctrl+D always, Ctrl+C only on non-Mac (Mac uses Ctrl+C for copy)
+    // Platform-specific: Ctrl+C exits on Windows/Linux but copies on Mac
     this.screen.key(['C-d'], () => {
       this.cleanup()
       process.exit(0)
     })
 
     if (!isMac) {
-      // On Windows/Linux, Ctrl+C exits (standard terminal behavior)
       this.screen.key(['C-c'], () => {
         this.cleanup()
         process.exit(0)
@@ -203,30 +187,33 @@ export class NodeProcessManager {
       }
     })
 
-    // Copy to clipboard:
-    // - Mac: Cmd+C (M-c)
-    // - Windows/Linux: Ctrl+Shift+C (C-S-c)
-    this.screen.key(['M-c', 'C-S-c'], async () => {
+    // Platform-specific clipboard shortcuts to avoid conflicts with terminal conventions
+    const copyKeys = isMac ? ['C-c', 'M-c'] : ['C-S-c']
+    this.screen.key(copyKeys, async () => {
       if (this.modalStack.length === 0) {
         await this.copySelectedProcessToClipboard()
       }
     })
 
-    // Refresh: Cmd+R on Mac, Ctrl+R on Windows/Linux
     this.screen.key(['C-r', 'M-r'], async () => {
       if (this.modalStack.length === 0 && !this.filterMode) {
         await this.refreshProcessList()
       }
     })
 
-    // Filter: Cmd+F on Mac, Ctrl+F on Windows/Linux
     this.screen.key(['C-f', 'M-f'], () => {
       if (this.modalStack.length === 0 && !this.filterMode) {
         this.enterFilterMode()
       }
     })
 
-    this.screen.key(['enter', 'k'], () => {
+    this.screen.key(['enter'], () => {
+      if (this.modalStack.length === 0) {
+        this.showProcessMenu()
+      }
+    })
+
+    this.screen.key(['x', 'k'], () => {
       if (this.modalStack.length === 0) {
         this.killSelectedProcess()
       }
@@ -253,14 +240,12 @@ export class NodeProcessManager {
       }
     })
 
-    // Sort cycling with 's' key
     this.screen.key(['s'], () => {
       if (this.modalStack.length === 0) {
         this.cycleSort()
       }
     })
 
-    // Keep c and m for quick CPU/Memory sorting
     this.screen.key(['c'], () => {
       if (this.modalStack.length === 0) {
         this.toggleSort('cpu')
@@ -320,7 +305,7 @@ export class NodeProcessManager {
       try {
         saveConfig(config)
       } catch {
-        // Silently fail if can't save - env var will still work
+        // Allow app to continue even if config save fails - env var is already loaded
       }
     }
 
@@ -922,7 +907,7 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
   }
 
   /**
-   * Show a toast notification
+   * Show a toast notification as a modal
    * @param message - The message to display
    * @param type - 'success', 'error', 'warning', or 'info'
    * @param duration - Duration in milliseconds (0 for persistent)
@@ -932,43 +917,59 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
     type: 'success' | 'error' | 'warning' | 'info' = 'info',
     duration: number = 2000
   ) {
-    // Clear any existing toast timeout
     if (this.toastTimeout) {
       clearTimeout(this.toastTimeout)
       this.toastTimeout = null
     }
 
-    this.activeToast = true
+    this.hideToast()
 
-    // Set color based on type
-    let fg: string, bg: string
+    let borderColor: string
     switch (type) {
       case 'success':
-        fg = 'black'
-        bg = 'green'
+        borderColor = 'green'
         break
       case 'error':
-        fg = 'white'
-        bg = 'red'
+        borderColor = 'red'
         break
       case 'warning':
-        fg = 'black'
-        bg = 'yellow'
+        borderColor = 'yellow'
         break
       case 'info':
       default:
-        fg = 'black'
-        bg = 'cyan'
+        borderColor = 'cyan'
         break
     }
 
-    this.toastBar.setContent(` ${message}`)
-    this.toastBar.style.fg = fg
-    this.toastBar.style.bg = bg
-    this.toastBar.style.bold = true
+    this.toastBar = blessed.box({
+      parent: this.screen,
+      top: 2,
+      left: 'center',
+      width: Math.max(message.length + 4, 20),
+      height: 3,
+      content: ` ${message} `,
+      align: 'center',
+      valign: 'middle',
+      border: {
+        type: 'line',
+      },
+      style: {
+        border: {
+          fg: borderColor,
+        },
+        bg: 'black',
+        fg: borderColor,
+        bold: true,
+      },
+      tags: true,
+      draggable: false,
+      shadow: true,
+    })
+
+    this.activeToast = true
+    this.toastBar.setFront()
     this.screen.render()
 
-    // Auto-hide after duration if not persistent
     if (duration > 0) {
       this.toastTimeout = setTimeout(() => {
         this.hideToast()
@@ -977,7 +978,7 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
   }
 
   /**
-   * Hide the toast notification and restore default header
+   * Hide the toast notification
    */
   private hideToast() {
     if (this.toastTimeout) {
@@ -985,14 +986,11 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
       this.toastTimeout = null
     }
 
-    this.activeToast = false
-
-    const defaultText = this.showAllProcesses ? 'All Processes' : 'Node Processes'
-    this.toastBar.setContent(defaultText)
-    this.toastBar.style.fg = 'white'
-    this.toastBar.style.bg = 'black'
-    this.toastBar.style.bold = true
-    this.screen.render()
+    if (this.toastBar && this.activeToast) {
+      this.toastBar.destroy()
+      this.activeToast = false
+      this.screen.render()
+    }
   }
 
   /**
@@ -1003,13 +1001,10 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
 
     let command: string
     if (platform === 'darwin') {
-      // macOS
       command = 'pbcopy'
     } else if (platform === 'win32') {
-      // Windows
       command = 'clip'
     } else {
-      // Linux - try xclip first, fall back to xsel
       try {
         await execAsync('which xclip')
         command = 'xclip -selection clipboard'
@@ -1064,6 +1059,71 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
         3000
       )
     }
+  }
+
+  private showProcessMenu() {
+    const selectedRow = (this.table as any).selected - 1
+
+    if (selectedRow < 0 || selectedRow >= this.displayedProcesses.length) {
+      this.showToast('⚠ No process selected', 'warning', 2000)
+      return
+    }
+
+    const p = this.displayedProcesses[selectedRow]
+
+    const menu = blessed.list({
+      parent: this.screen,
+      top: 'center',
+      left: 'center',
+      width: 50,
+      height: 12,
+      label: ` Process: ${p.name} (PID ${p.pid}) `,
+      border: 'line',
+      style: {
+        border: { fg: 'cyan' },
+        selected: { bg: 'blue', fg: 'white', bold: true },
+        item: { fg: 'white' }
+      },
+      keys: true,
+      mouse: true,
+      vi: false,
+      tags: true,
+      items: [
+        'AI Description',
+        'Kill Process',
+        'Copy Process Info',
+        'Cancel'
+      ]
+    })
+
+    this.modalStack.push(menu as any)
+    menu.focus()
+
+    menu.on('select', async (item: any) => {
+      const itemText = item.getText()
+
+      this.modalStack.pop()
+      menu.detach()
+      this.table.focus()
+      this.screen.render()
+
+      if (itemText === 'AI Description') {
+        await this.explainSelectedProcess()
+      } else if (itemText === 'Kill Process') {
+        await this.killSelectedProcess()
+      } else if (itemText === 'Copy Process Info') {
+        await this.copySelectedProcessToClipboard()
+      }
+    })
+
+    menu.key(['escape', 'q'], () => {
+      this.modalStack.pop()
+      menu.detach()
+      this.table.focus()
+      this.screen.render()
+    })
+
+    this.screen.render()
   }
 
   private enterFilterMode() {
@@ -1146,7 +1206,6 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
       const lowerName = p.name.toLowerCase()
       const lowerCmd = p.cmd.toLowerCase()
 
-      // Exact substring match (highest priority)
       if (
         pidStr.includes(this.filterQuery) ||
         lowerName.includes(lowerQuery) ||
@@ -1155,7 +1214,6 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
         return true
       }
 
-      // Word boundary match (e.g., "node" matches "node-server")
       const nameWords = lowerName.split(/[\s\-_.]/)
       const cmdWords = lowerCmd.split(/[\s\-_./]/)
 
@@ -1165,8 +1223,8 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
         }
       }
 
-      // Tight fuzzy match - only if characters are reasonably close together
-      const maxGap = 3 // Maximum characters between matches
+      // Fuzzy match with gap limit to prevent matching unrelated processes (e.g., "nd" shouldn't match "node-daemon")
+      const maxGap = 3
       const searchText = `${pidStr} ${lowerName} ${lowerCmd}`
 
       let queryIndex = 0
@@ -1266,7 +1324,6 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
 
       const currentPid = process.pid
 
-      // Generate table headers with sort indicators
       const arrow = this.sortOrder === 'asc' ? '↑' : '↓'
       const headers = [
         this.sortColumn === 'pid' ? `PID ${arrow}` : 'PID',
@@ -1452,31 +1509,25 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
       this.refreshInterval = null
     }
 
-    // Clear any active toast timeout
     if (this.toastTimeout) {
       clearTimeout(this.toastTimeout)
       this.toastTimeout = null
     }
 
-    // Restore original console functions
     console.error = this.originalConsoleError
     console.log = this.originalConsoleLog
 
-    // Remove event listener
     if (this.helpBarClickHandler) {
       this.helpBar.removeListener('click', this.helpBarClickHandler)
     }
 
-    // Clean up filter box if active
     if (this.filterBox) {
       this.filterBox.destroy()
       this.filterBox = null
     }
 
-    // Destroy screen (also destroys all child widgets)
     this.screen.destroy()
 
-    // Clear process arrays
     this.processes = []
     this.displayedProcesses = []
   }

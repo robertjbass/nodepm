@@ -29,7 +29,7 @@ export function loadConfig(): Config {
       return JSON.parse(content)
     }
   } catch {
-    // Config file might be corrupted or unreadable
+    // Silently return empty config - allows first-time users to proceed without errors
   }
   return {}
 }

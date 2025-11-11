@@ -22,7 +22,10 @@
 ## 🧪 Testing
 
 - [ ] Add Vitest
+- [ ] Test on Windows
+- [ ] Test on Linux
+- [ ] Test on MacOS
 
 ## 🐛 Bugs
 
-- [ ] Toast bar is not always visible
+- [x] Toast notification is not always visible
