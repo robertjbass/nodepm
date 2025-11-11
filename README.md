@@ -8,7 +8,8 @@ A beautiful terminal UI for managing and monitoring Node.js processes. Find and 
 ## Features
 
 - **Interactive Process List** - View all running Node.js processes with CPU, memory, and command details
-- **Smart Filtering** - Automatically detects and displays only Node processes
+- **Smart Filtering** - Automatically detects and displays only Node processes (or use `--all` to show all processes)
+- **Fuzzy Search** - Press 'f' to filter processes in real-time with fuzzy matching
 - **Sortable Columns** - Sort by CPU usage or memory consumption
 - **Process Management** - Kill processes with confirmation prompts
 - **AI Integration** - Get explanations and insights about processes using OpenAI
@@ -80,8 +81,17 @@ nodepm --help
 ### Actions
 - **Enter** or **k** - Kill selected process (with confirmation)
 - **r** - Refresh process list
+- **f** - Enter filter mode (fuzzy search)
 - **c** - Sort by CPU usage (toggle ascending/descending)
 - **m** - Sort by Memory usage (toggle ascending/descending)
+
+### Filter Mode
+- **f** - Enter filter mode
+- **Type** - Filter processes by PID, name, or command (supports fuzzy matching)
+- **Backspace** - Delete last character from filter
+- **ESC** - Exit filter mode and show all processes again
+
+Filter mode allows you to quickly narrow down the process list by typing. It supports both exact matching and fuzzy matching (e.g., typing "tsx" will match "tsx", "tsserver", etc.).
 
 ### AI Features
 - **?** - Explain selected process with AI

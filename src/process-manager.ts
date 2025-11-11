@@ -28,6 +28,7 @@ export class NodeProcessManager {
   private statusBar: blessed.Widgets.BoxElement
   private helpBar: blessed.Widgets.BoxElement
   private processes: ProcessInfo[] = []
+  private displayedProcesses: ProcessInfo[] = []
   private refreshInterval: NodeJS.Timeout | null = null
   private sortColumn: SortColumn = 'none'
   private sortOrder: SortOrder = 'desc'
@@ -37,6 +38,9 @@ export class NodeProcessManager {
   private originalConsoleError: typeof console.error
   private originalConsoleLog: typeof console.log
   private helpBarClickHandler: () => void
+  private filterMode: boolean = false
+  private filterQuery: string = ''
+  private filterBox: blessed.Widgets.BoxElement | null = null
 
   constructor(showAllProcesses: boolean = false) {
     this.showAllProcesses = showAllProcesses
@@ -133,7 +137,7 @@ export class NodeProcessManager {
       width: '100%',
       height: 2,
       content:
-        ' {bold}↑↓{/bold}:Nav {bold}Enter{/bold}:Kill {bold}?{/bold}:Explain {bold}/{/bold}:Ask {bold}h{/bold}:Help {bold}r{/bold}:Refresh {bold}c{/bold}:CPU {bold}m{/bold}:Mem {bold}q{/bold}:Quit',
+        ' {bold}↑↓{/bold}:Nav {bold}Enter{/bold}:Kill {bold}?{/bold}:Explain {bold}/{/bold}:Ask {bold}f{/bold}:Filter {bold}h{/bold}:Help {bold}r{/bold}:Refresh {bold}c{/bold}:CPU {bold}m{/bold}:Mem {bold}q{/bold}:Quit',
       style: {
         fg: 'black',
         bg: 'cyan',
@@ -227,6 +231,18 @@ export class NodeProcessManager {
     this.screen.key(['h'], () => {
       if (this.modalStack.length === 0) {
         this.showHelpModal()
+      }
+    })
+
+    this.screen.key(['f'], () => {
+      if (this.modalStack.length === 0 && !this.filterMode) {
+        this.enterFilterMode()
+      }
+    })
+
+    this.screen.on('keypress', (ch: string, key: any) => {
+      if (this.filterMode && this.modalStack.length === 0) {
+        this.handleFilterInput(ch, key)
       }
     })
 
@@ -474,7 +490,7 @@ export class NodeProcessManager {
   private async explainSelectedProcess() {
     const selectedRow = (this.table as any).selected - 1
 
-    if (selectedRow < 0 || selectedRow >= this.processes.length) {
+    if (selectedRow < 0 || selectedRow >= this.displayedProcesses.length) {
       this.statusBar.setContent('{yellow-fg}⚠ No process selected{/yellow-fg}')
       this.screen.render()
       return
@@ -492,7 +508,7 @@ export class NodeProcessManager {
       await this.saveApiKeyToConfig(apiKey)
     }
 
-    const process = this.processes[selectedRow]
+    const process = this.displayedProcesses[selectedRow]
     await this.explainProcessWithAI(process)
   }
 
@@ -827,6 +843,104 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
     this.refreshProcessList()
   }
 
+  private enterFilterMode() {
+    this.filterMode = true
+    this.filterQuery = ''
+
+    this.filterBox = blessed.box({
+      parent: this.screen,
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: 3,
+      border: {
+        type: 'line',
+      },
+      style: {
+        border: {
+          fg: 'yellow',
+        },
+        bg: 'black',
+      },
+      label: ' {bold}{yellow-fg}Filter Mode{/yellow-fg}{/bold} ',
+      content: '{yellow-fg}Type to filter (ESC to exit):{/yellow-fg} ',
+      tags: true,
+    })
+
+    this.table.top = 3
+    this.table.height = '100%-6'
+
+    this.screen.render()
+  }
+
+  private exitFilterMode() {
+    this.filterMode = false
+    this.filterQuery = ''
+
+    if (this.filterBox) {
+      this.filterBox.destroy()
+      this.filterBox = null
+    }
+
+    this.table.top = 0
+    this.table.height = '100%-3'
+
+    this.refreshProcessList()
+  }
+
+  private handleFilterInput(ch: string, key: any) {
+    if (key.name === 'escape') {
+      this.exitFilterMode()
+      return
+    }
+
+    if (key.name === 'backspace') {
+      this.filterQuery = this.filterQuery.slice(0, -1)
+    } else if (key.name === 'space') {
+      this.filterQuery += ' '
+    } else if (ch && ch.length === 1 && !key.ctrl && !key.meta) {
+      this.filterQuery += ch
+    } else {
+      return
+    }
+
+    if (this.filterBox) {
+      this.filterBox.setContent(
+        `{yellow-fg}Type to filter (ESC to exit):{/yellow-fg} ${this.filterQuery}`
+      )
+    }
+
+    this.refreshProcessList()
+  }
+
+  private fuzzyMatch(text: string, query: string): boolean {
+    if (!query) return true
+
+    const lowerText = text.toLowerCase()
+    const lowerQuery = query.toLowerCase()
+
+    let queryIndex = 0
+    for (let i = 0; i < lowerText.length && queryIndex < lowerQuery.length; i++) {
+      if (lowerText[i] === lowerQuery[queryIndex]) {
+        queryIndex++
+      }
+    }
+
+    return queryIndex === lowerQuery.length
+  }
+
+  private filterProcesses(processes: ProcessInfo[]): ProcessInfo[] {
+    if (!this.filterQuery) return processes
+
+    return processes.filter((p) => {
+      const searchText = `${p.pid} ${p.name} ${p.cmd}`.toLowerCase()
+      return (
+        this.fuzzyMatch(searchText, this.filterQuery) ||
+        searchText.includes(this.filterQuery.toLowerCase())
+      )
+    })
+  }
+
   private sortProcesses(processes: ProcessInfo[]): ProcessInfo[] {
     if (this.sortColumn === 'none') {
       return processes
@@ -896,7 +1010,10 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
 
       this.processes = await this.getProcesses()
 
-      const sortedProcesses = this.sortProcesses(this.processes)
+      const filteredProcesses = this.filterProcesses(this.processes)
+      const sortedProcesses = this.sortProcesses(filteredProcesses)
+
+      this.displayedProcesses = sortedProcesses
 
       const currentPid = process.pid
       const tableData = [
@@ -934,7 +1051,8 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
 
       this.table.setData(tableData)
 
-      const processCount = this.processes.length
+      const totalProcessCount = this.processes.length
+      const displayedProcessCount = sortedProcesses.length
       const totalMemory = this.processes.reduce((sum, p) => sum + p.memory, 0)
 
       let sortIndicator = ''
@@ -949,8 +1067,16 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
         sortIndicator = ` | Sort: {bold}${columnName} ${arrow}{/bold}`
       }
 
+      let filterIndicator = ''
+      if (this.filterMode && this.filterQuery) {
+        filterIndicator = ` | {yellow-fg}Filtered: ${displayedProcessCount}/${totalProcessCount}{/yellow-fg}`
+      }
+
       const processTypeLabel = this.showAllProcesses ? '' : 'Node '
-      const statusMessage = `{green-fg}✓{/green-fg} Found {bold}{cyan-fg}${processCount}{/cyan-fg}{/bold} ${processTypeLabel}processes | Total Memory: {bold}{yellow-fg}${this.formatBytes(totalMemory)}{/yellow-fg}{/bold}${sortIndicator} | Last update: {gray-fg}${new Date().toLocaleTimeString()}{/gray-fg}`
+      const processCountDisplay = this.filterMode && this.filterQuery
+        ? `{bold}{cyan-fg}${displayedProcessCount}{/cyan-fg}{/bold}`
+        : `{bold}{cyan-fg}${totalProcessCount}{/cyan-fg}{/bold}`
+      const statusMessage = `{green-fg}✓{/green-fg} Found ${processCountDisplay} ${processTypeLabel}processes | Total Memory: {bold}{yellow-fg}${this.formatBytes(totalMemory)}{/yellow-fg}{/bold}${sortIndicator}${filterIndicator} | Last update: {gray-fg}${new Date().toLocaleTimeString()}{/gray-fg}`
 
       this.statusBar.setContent(statusMessage)
 
@@ -966,13 +1092,13 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
   private killSelectedProcess() {
     const selectedRow = (this.table as any).selected - 1
 
-    if (selectedRow < 0 || selectedRow >= this.processes.length) {
+    if (selectedRow < 0 || selectedRow >= this.displayedProcesses.length) {
       this.statusBar.setContent('{yellow-fg}⚠ No process selected{/yellow-fg}')
       this.screen.render()
       return
     }
 
-    const process = this.processes[selectedRow]
+    const process = this.displayedProcesses[selectedRow]
     this.showKillConfirmation(process)
   }
 
@@ -1072,11 +1198,18 @@ Please explain in 2-3 sentences what this process likely does and whether it's n
       this.helpBar.removeListener('click', this.helpBarClickHandler)
     }
 
+    // Clean up filter box if active
+    if (this.filterBox) {
+      this.filterBox.destroy()
+      this.filterBox = null
+    }
+
     // Destroy screen (also destroys all child widgets)
     this.screen.destroy()
 
-    // Clear process array
+    // Clear process arrays
     this.processes = []
+    this.displayedProcesses = []
   }
 
   async start() {
