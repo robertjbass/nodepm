@@ -4,29 +4,53 @@ import blessed from 'blessed'
 import psList from 'ps-list'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { config } from 'dotenv'
 import OpenAI from 'openai'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as os from 'os'
 import { marked } from 'marked'
 import { markedTerminal } from 'marked-terminal'
 
-// Suppress dotenv output completely
-const originalStdoutWrite = process.stdout.write.bind(process.stdout)
-process.stdout.write = ((chunk: any, encoding?: any, callback?: any) => {
-  const str = chunk.toString()
-  if (str.includes('dotenv') || str.includes('🛠️')) {
-    return true
-  }
-  return originalStdoutWrite(chunk, encoding, callback)
-}) as any
-
-config({ debug: false }) // Load .env file without debug output
-
-// Restore stdout after dotenv loads
-process.stdout.write = originalStdoutWrite
-
 const execAsync = promisify(exec)
+
+// Config file management
+type Config = {
+  openAiApiKey?: string
+  version?: string
+}
+
+function getConfigPath(): string {
+  const homeDir = os.homedir()
+  const configDir = path.join(homeDir, '.config', 'nodepm')
+  return path.join(configDir, 'config.json')
+}
+
+function ensureConfigDir(): void {
+  const configPath = getConfigPath()
+  const configDir = path.dirname(configPath)
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true })
+  }
+}
+
+function loadConfig(): Config {
+  try {
+    const configPath = getConfigPath()
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf-8')
+      return JSON.parse(content)
+    }
+  } catch {
+    // If config file is corrupted or doesn't exist, return empty config
+  }
+  return {}
+}
+
+function saveConfig(config: Config): void {
+  ensureConfigDir()
+  const configPath = getConfigPath()
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+}
 
 type ProcessInfo = {
   pid: number
@@ -49,13 +73,9 @@ class NodeProcessManager {
   private sortColumn: SortColumn = 'none'
   private sortOrder: SortOrder = 'desc'
   private openaiClient: OpenAI | null = null
-  private envFilePath: string
   private modalStack: string[] = []
 
   constructor() {
-    // Set up env file path
-    this.envFilePath = path.join(process.cwd(), '.env')
-
     // Initialize OpenAI if API key exists
     this.initializeOpenAI()
 
@@ -282,7 +302,24 @@ class NodeProcessManager {
   }
 
   private initializeOpenAI() {
-    const apiKey = process.env.OPENAI_API_KEY
+    // Check environment variable first
+    const envApiKey = process.env.OPENAI_API_KEY
+    const config = loadConfig()
+
+    // If env var exists but not in config, auto-save it
+    if (envApiKey && !config.openAiApiKey) {
+      config.openAiApiKey = envApiKey
+      config.version = '0.7.0'
+      try {
+        saveConfig(config)
+      } catch {
+        // Silently fail if can't save - env var will still work
+      }
+    }
+
+    // Use env var if available, otherwise use config
+    const apiKey = envApiKey || config.openAiApiKey
+
     if (apiKey) {
       this.openaiClient = new OpenAI({ apiKey })
     }
@@ -371,14 +408,17 @@ class NodeProcessManager {
     })
   }
 
-  private async saveApiKeyToEnv(apiKey: string) {
+  private async saveApiKeyToConfig(apiKey: string) {
     try {
-      const envContent = `OPENAI_API_KEY=${apiKey}\n`
-      fs.writeFileSync(this.envFilePath, envContent, { flag: 'a' })
-      process.env.OPENAI_API_KEY = apiKey
+      const config = loadConfig()
+      config.openAiApiKey = apiKey
+      config.version = '0.7.0'
+      saveConfig(config)
+
       this.openaiClient = new OpenAI({ apiKey })
+      const configPath = getConfigPath()
       this.statusBar.setContent(
-        '{green-fg}✓ API key saved to .env file{/green-fg}'
+        `{green-fg}✓ API key saved to ${configPath}{/green-fg}`
       )
     } catch (error) {
       this.statusBar.setContent(
@@ -527,7 +567,7 @@ class NodeProcessManager {
         this.screen.render()
         return
       }
-      await this.saveApiKeyToEnv(apiKey)
+      await this.saveApiKeyToConfig(apiKey)
     }
 
     const process = this.processes[selectedRow]
@@ -543,7 +583,7 @@ class NodeProcessManager {
         this.screen.render()
         return
       }
-      await this.saveApiKeyToEnv(apiKey)
+      await this.saveApiKeyToConfig(apiKey)
     }
 
     const question = await this.promptForQuestion()
