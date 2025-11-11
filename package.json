@@ -1,6 +1,6 @@
 {
   "name": "nodepm-ui",
-  "version": "0.7.22",
+  "version": "0.7.23",
   "description": "Terminal UI for managing your machine's processes with a focus on Node.js processes",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,9 +19,9 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "check-keys": "tsx scripts/check-keys.ts",
-    "test-publish": "npm pack --dry-run",
+    "test-publish": "pnpm pack --dry-run",
     "publish": "pnpm publish",
-    "prepare": "npm run build"
+    "prepare": "pnpm build"
   },
   "keywords": [
     "node",
